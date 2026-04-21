@@ -66,12 +66,19 @@ export default function Home() {
     const n = file.name.toLowerCase();
     if (n.endsWith('.pdf')) {
       const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunk = 8192;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const b64 = btoa(binary);
       return { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } };
     }
     const text = await file.text();
     return { type:'text', text:`[${file.name}]\n${text}` };
   };
+  
 
   const runAssessment = async () => {
     if (!files.length) return;
