@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════
- *  /api/assess — وكيل آمن لـ Google Gemini API (Production)
+ *  /api/assess — وكيل آمن لـ Gemini (نسخة محسّنة)
  * ═══════════════════════════════════════════════════════════
  */
 
 import { createServerClient } from '../../lib/supabase';
 
-const SYSTEM_PROMPT = `You are an expert AI internal assessor for the King Abdulaziz Quality Award (KAQA) 2022.
-Return ONLY valid JSON (no markdown, no explanation).`;
+const SYSTEM_PROMPT = `You are an expert AI internal assessor.
+Return ONLY valid JSON.`;
 
 export const config = {
   api: { bodyParser: { sizeLimit: '20mb' } },
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ✅ تحقق من التوكن
+  // 🔐 التحقق من التوكن
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -31,36 +31,34 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Invalid session' });
   }
 
-  // ✅ تحقق من API KEY
+  // 🔑 API KEY
   const API_KEY = process.env.GEMINI_API_KEY;
   if (!API_KEY) {
-    return res.status(500).json({
-      error: 'Missing GEMINI_API_KEY in environment variables',
-    });
+    return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
   }
 
   try {
     const { content } = req.body;
 
-    // ✅ تحقق من المدخلات
     if (!Array.isArray(content) || content.length === 0) {
-      return res.status(400).json({ error: 'Invalid content format' });
+      return res.status(400).json({ error: 'Invalid content' });
     }
 
+    // 🧠 تجهيز البيانات
     const parts = content.map(c => {
       if (c.type === 'text') {
         return { text: c.text };
       }
 
       if (c.type === 'document') {
-        // حد بسيط للحجم (تقريبًا 5MB base64)
-        if (!c.source?.data || c.source.data.length > 7_000_000) {
-          throw new Error('Document too large or invalid');
+        if (!c.source?.data) {
+          throw new Error('Invalid document');
         }
 
+        // ✅ إصلاح المشكلة: mime type ديناميكي
         return {
           inline_data: {
-            mime_type: 'application/pdf',
+            mime_type: c.mimeType || 'application/pdf',
             data: c.source.data,
           },
         };
@@ -71,7 +69,7 @@ export default async function handler(req, res) {
 
     parts.unshift({ text: SYSTEM_PROMPT + '\n\n---\n\n' });
 
-    // ✅ timeout
+    // ⏱️ timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -95,26 +93,22 @@ export default async function handler(req, res) {
       );
     } catch (err) {
       if (err.name === 'AbortError') {
-        return res.status(504).json({ error: 'AI request timeout' });
+        return res.status(504).json({ error: 'AI timeout' });
       }
       throw err;
     } finally {
       clearTimeout(timeout);
     }
 
-    // ✅ معالجة أخطاء Gemini
+    // ❗ هنا التعديل الأهم: إظهار الخطأ الحقيقي
     if (!response.ok) {
       const errText = await response.text();
 
-      if (errText.includes('API_KEY_INVALID')) {
-        return res.status(401).json({
-          error: 'Invalid Gemini API Key (تأكد من Google AI Studio)',
-        });
-      }
+      console.error('🔥 Gemini FULL ERROR:', errText);
 
-     return res.status(502).json({
-  error: errText,
-          });
+      return res.status(502).json({
+        error: errText, // 👈 نعرض الخطأ الحقيقي
+      });
     }
 
     const data = await response.json();
@@ -127,7 +121,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ تنظيف الرد
+    // 🧹 تنظيف الرد
     raw = raw.trim()
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '')
@@ -144,7 +138,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ حفظ في DB
+    // 💾 حفظ
     const { data: saved, error: saveError } = await supabase
       .from('assessments')
       .insert({
@@ -166,21 +160,16 @@ export default async function handler(req, res) {
       .single();
 
     if (saveError) {
-      console.error('DB save error:', saveError);
+      console.error('DB error:', saveError);
     }
 
-    // ✅ audit log
+    // 🧾 audit
     if (saved?.id) {
       await supabase.from('audit_log').insert({
         user_id: user.id,
         action: 'assessment_created',
         entity_type: 'assessment',
         entity_id: saved.id,
-        details: {
-          organization: result.organizationName,
-          score: result.totalScore,
-          maturity: result.maturityLevel,
-        },
       });
     }
 
@@ -190,10 +179,10 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('Assessment error:', err);
+    console.error('🔥 Server error:', err);
 
     return res.status(500).json({
-      error: err.message || 'Internal server error',
+      error: err.message,
     });
   }
 }
