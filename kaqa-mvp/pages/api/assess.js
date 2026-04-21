@@ -112,10 +112,9 @@ export default async function handler(req, res) {
         });
       }
 
-      return res.status(502).json({
-        error: 'AI service error',
-        details: errText,
-      });
+     return res.status(502).json({
+  error: errText,
+          });
     }
 
     const data = await response.json();
