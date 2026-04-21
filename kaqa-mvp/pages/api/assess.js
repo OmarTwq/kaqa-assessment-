@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     parts.unshift({ text: SYSTEM_PROMPT + '\n\n---\n\n' });
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
