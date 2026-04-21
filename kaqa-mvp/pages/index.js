@@ -64,21 +64,28 @@ export default function Home() {
 
   const extract = async (file) => {
     const n = file.name.toLowerCase();
+
     if (n.endsWith('.pdf')) {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      const chunk = 8192;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      const b64 = btoa(binary);
-      return { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } };
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const b64 = reader.result.split(',')[1];
+          resolve({ type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
+
+    if (n.endsWith('.docx')) {
+      const buf = await file.arrayBuffer();
+      const r = await window.mammoth.extractRawText({ arrayBuffer: buf });
+      return { type:'text', text:`[${file.name}]\n${r.value}` };
+    }
+
     const text = await file.text();
     return { type:'text', text:`[${file.name}]\n${text}` };
   };
-  
 
   const runAssessment = async () => {
     if (!files.length) return;
