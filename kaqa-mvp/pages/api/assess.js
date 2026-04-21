@@ -46,7 +46,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ─── التحقق من المصادقة ──────────────────────────────
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -59,11 +58,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Invalid session' });
   }
 
-  // ─── استدعاء Gemini API ───────────────────────────────
   try {
     const { content } = req.body;
 
-    // تحويل المحتوى لصيغة Gemini
     const parts = content.map(c => {
       if (c.type === 'text') return { text: c.text };
       if (c.type === 'document') return {
@@ -72,11 +69,10 @@ export default async function handler(req, res) {
       return { text: JSON.stringify(c) };
     });
 
-    // إضافة System Prompt في أول الرسالة
     parts.unshift({ text: SYSTEM_PROMPT + '\n\n---\n\n' });
 
     const response = await fetch(
-     `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,7 +95,6 @@ export default async function handler(req, res) {
     const data = await response.json();
     let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // تنظيف الـ JSON
     raw = raw.trim()
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '')
@@ -107,7 +102,6 @@ export default async function handler(req, res) {
 
     const result = JSON.parse(raw);
 
-    // ─── حفظ التقييم في Supabase ──────────────────────
     const { data: saved, error: saveError } = await supabase
       .from('assessments')
       .insert({
@@ -130,7 +124,6 @@ export default async function handler(req, res) {
 
     if (saveError) console.error('DB save error:', saveError);
 
-    // ─── تسجيل في سجل التدقيق ─────────────────────────
     await supabase.from('audit_log').insert({
       user_id: user.id,
       action: 'assessment_created',
